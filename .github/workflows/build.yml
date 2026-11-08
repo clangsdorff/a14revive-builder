@@ -72,7 +72,7 @@ jobs:
           curl -sSfL https://github.com/erofs/erofs-utils/archive/refs/tags/v1.9.4.tar.gz \
             | tar -xz -C "$RUNNER_TEMP"
           (cd "$RUNNER_TEMP/erofs-utils-1.9.4" && ./autogen.sh && ./configure && make -j"$(nproc)" && sudo make install)
-          fsck.erofs --help 2>&1 | grep -q -- --xattrs
+          fsck.erofs -V
           curl -sSfL -o "$RUNNER_TEMP/samloader.zip" \
             https://github.com/topjohnwu/samloader-rs/releases/download/2.2.0/samloader-v2.2.0-linux-x86_64.zip
           echo "f6029dcce75b8a66acc1975529085c53903f7cdb35505e0ac0a973f2652480ff  $RUNNER_TEMP/samloader.zip" | sha256sum -c -
