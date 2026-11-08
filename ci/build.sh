@@ -2,7 +2,7 @@
 # Full CI build: download A166B + A145F, patch, rebuild system/product/vendor,
 # pack the TWRP zip. Runs as root so uid/gid and xattrs survive extraction.
 #
-# env: PATCHSET SOURCE_MODEL SOURCE_CSC SOURCE_TAC TARGET_MODEL TARGET_CSC TARGET_TAC
+# env: PATCHSET SOURCE_MODEL SOURCE_CSC TARGET_MODEL TARGET_CSC
 #      SIGN_KEY SIGN_CERT KERNEL_TAG KERNEL_VARIANT ROM_VERSION WORK
 set -euo pipefail
 
@@ -24,13 +24,13 @@ latest() {
         | perl -nE 'say $1 if /<latest[^>]*>(.*?)<\/latest>/'
 }
 
-# download <model> <csc> <imei> <dir>: firmware zip into <dir>, sets FW
+# download <model> <csc> <dir>: firmware zip into <dir>, sets FW
 download() {
     FW="$(latest "$1" "$2")"
     [ -n "$FW" ] || { echo "no firmware for $1/$2"; exit 1; }
     echo "[*] $1/$2: $FW"
-    mkdir -p "$4"
-    (cd "$4" && samloader -m "$1" -r "$2" -i "$3" download -v "$FW" -O .)
+    mkdir -p "$3"
+    samloader download -m "$1" -r "$2" -v "$FW" -d "$3"
 }
 
 # super <fw dir> <out dir> <part>...: super.img out of AP, unpacked to <out dir>
@@ -65,8 +65,8 @@ pack() {
 mkdir -p "$W"/{src,tgt,parts,a145f,img,extra}
 
 echo "::group::download"
-download "$SOURCE_MODEL" "$SOURCE_CSC" "$SOURCE_TAC" "$W/src"; SRC_FW="$FW"
-download "$TARGET_MODEL" "$TARGET_CSC" "$TARGET_TAC" "$W/tgt"; TGT_FW="$FW"
+download "$SOURCE_MODEL" "$SOURCE_CSC" "$W/src"; SRC_FW="$FW"
+download "$TARGET_MODEL" "$TARGET_CSC" "$W/tgt"; TGT_FW="$FW"
 SRC_PDA="${SRC_FW%%/*}"; TGT_PDA="${TGT_FW%%/*}"
 echo "::endgroup::"
 

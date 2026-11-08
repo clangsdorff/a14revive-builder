@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.txt text eol=lf
+ci/prebuilt/update-binary binary
+*.img binary
+*.bin binary
+*.zip binary
+*.tar binary
+*.lz4 binary
+*.apk binary
+*.jar binary
+*.apex binary
+*.so binary
+*.pk8 binary
