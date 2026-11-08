@@ -1,0 +1,117 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      patch_repo:
+        description: patchset repo (owner/name)
+        required: true
+      patch_ref:
+        description: patchset branch or tag
+        default: main
+      source_model:
+        description: donor model
+        default: SM-A166B
+      source_csc:
+        description: donor CSC
+        default: EUX
+      source_tac:
+        description: donor IMEI or first 8 digits
+        required: true
+      target_model:
+        description: target model
+        default: SM-A145F
+      target_csc:
+        description: target CSC
+        default: TUR
+      target_tac:
+        description: target IMEI or first 8 digits
+        default: "35889233"
+      rom_version:
+        description: ROM version
+        default: "5.0"
+      kernel_tag:
+        description: langsdorffkernel release tag
+        default: "4.0"
+      kernel_variant:
+        description: kernel variant (e, en, p, pn)
+        default: en
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune -af > /dev/null
+          df -h / /mnt
+
+      - name: Checkout builder
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout patchset
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.patch_repo }}
+          ref: ${{ inputs.patch_ref }}
+          path: patchset
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y erofs-utils android-sdk-libsparse-utils lz4 e2fsprogs xxd
+          sudo pip3 install --break-system-packages \
+            git+https://github.com/ananjaser1211/samloader@3c372007945d4f3f165433a1d5ae40523d7f68bf
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Signing key
+        env:
+          SIGN_KEY_PK8: ${{ secrets.SIGN_KEY_PK8 }}
+          SIGN_CERT_PEM: ${{ secrets.SIGN_CERT_PEM }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/key"
+          echo "$SIGN_KEY_PK8" | base64 -d > "$RUNNER_TEMP/key/platform.pk8"
+          echo "$SIGN_CERT_PEM" > "$RUNNER_TEMP/key/platform.x509.pem"
+
+      - name: Build
+        id: build
+        env:
+          PATCHSET: ${{ github.workspace }}/patchset
+          SOURCE_MODEL: ${{ inputs.source_model }}
+          SOURCE_CSC: ${{ inputs.source_csc }}
+          SOURCE_TAC: ${{ inputs.source_tac }}
+          TARGET_MODEL: ${{ inputs.target_model }}
+          TARGET_CSC: ${{ inputs.target_csc }}
+          TARGET_TAC: ${{ inputs.target_tac }}
+          SIGN_KEY: ${{ runner.temp }}/key/platform.pk8
+          SIGN_CERT: ${{ runner.temp }}/key/platform.x509.pem
+          KERNEL_TAG: ${{ inputs.kernel_tag }}
+          KERNEL_VARIANT: ${{ inputs.kernel_variant }}
+          ROM_VERSION: ${{ inputs.rom_version }}
+          GH_TOKEN: ${{ github.token }}
+          WORK: /mnt/work
+        run: sudo -E env "PATH=$PATH" bash builder/ci/build.sh
+
+      - name: Remove signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/key"
+
+      - name: Upload to gofile
+        env:
+          GOFILE_TOKEN: ${{ secrets.GOFILE_TOKEN }}
+          ZIP: ${{ steps.build.outputs.zip }}
+        run: |
+          auth=()
+          [ -n "$GOFILE_TOKEN" ] && auth=(-H "Authorization: Bearer $GOFILE_TOKEN")
+          res="$(curl -sf "${auth[@]}" -F "file=@$ZIP" https://upload.gofile.io/uploadfile)"
+          link="$(jq -r '.data.downloadPage' <<< "$res")"
+          [ "$(jq -r .status <<< "$res")" = ok ] || { echo "$res"; exit 1; }
+          echo "$(basename "$ZIP"): $link" | tee -a "$GITHUB_STEP_SUMMARY"
