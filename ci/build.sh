@@ -24,9 +24,9 @@ latest() {
         | perl -nE 'say $1 if /<latest[^>]*>(.*?)<\/latest>/'
 }
 
-# download <model> <csc> <dir>: firmware zip into <dir>, sets FW
+# download <model> <csc> <dir> [version]: firmware zip into <dir>, sets FW
 download() {
-    FW="$(latest "$1" "$2")"
+    FW="${4:-$(latest "$1" "$2")}"
     [ -n "$FW" ] || { echo "no firmware for $1/$2"; exit 1; }
     echo "[*] $1/$2: $FW"
     mkdir -p "$3"
@@ -62,11 +62,50 @@ pack() {
         -E^xattr-name-filter --quiet "$W/img/$1.img" "$2"
 }
 
+kernel() {
+    echo "::group::kernel"
+    gh release download "$KERNEL_TAG" -R clangsdorff/langsdorffkernel \
+        -p "langsdorff@${KERNEL_TAG}${KERNEL_VARIANT}_a14.tar" -O "$W/kernel.tar"
+    for f in boot vendor_boot vbmeta; do
+        tar -xOf "$W/kernel.tar" "$f.img.lz4" | lz4 -d > "$W/extra/$f.img"
+    done
+    cp "$CI/prebuilt/update-binary" "$CI/prebuilt/unsparse_super_empty.img" "$W/extra/"
+    echo "::endgroup::"
+}
+
+oneui() {
+    local v
+    v="$(awk -F= '$1 == "ro.build.version.oneui" {v = $2 + 0; a = int(v / 10000); b = int(v / 100) % 100; c = v % 100
+        print a (b || c ? "." b : "") (c ? "." c : "")}' "$1")"
+    [ -n "$v" ] || { echo "ro.build.version.oneui not found" >&2; exit 1; }
+    echo "$v"
+}
+
+# make_zip <donor pda> <target pda>, uses ONEUI
+make_zip() {
+    echo "::group::zip"
+    sed -E -e "s/OneUI [0-9.]+ [A-Z0-9]+ Base with langsdorffkernel@[^\"]*/OneUI $ONEUI $1 Base with langsdorffkernel@${KERNEL_TAG}${KERNEL_VARIANT}/" \
+        -e "s/Version [0-9.]+/Version $ROM_VERSION/" tools/updater-script > "$W/updater-script"
+    grep -q "OneUI $ONEUI $1 Base" "$W/updater-script" || { echo "updater-script banner not updated"; exit 1; }
+    OUT="$W/a14revive@${ROM_VERSION}_$1.zip"
+    python3 "$CI/zip.py" "$W/img" "$W/extra" "$W/updater-script" "$OUT" \
+        "version=a14revive@$ROM_VERSION" "donor=$1" "target=$2"
+    echo "zip=$OUT" >> "$GITHUB_OUTPUT"
+    echo "donor=$1" >> "$GITHUB_OUTPUT"
+    echo "::endgroup::"
+}
+
 mkdir -p "$W"/{src,tgt,parts,a145f,img,extra}
 
+case "${MODE:?}" in
+    stock) source "$CI/stock.sh"; exit 0 ;;
+    port) ;;
+    *) echo "unknown mode: $MODE"; exit 1 ;;
+esac
+
 echo "::group::download"
-download "$SOURCE_MODEL" "$SOURCE_CSC" "$W/src"; SRC_FW="$FW"
-download "$TARGET_MODEL" "$TARGET_CSC" "$W/tgt"; TGT_FW="$FW"
+download "$SOURCE_MODEL" "$SOURCE_CSC" "$W/src" "${SOURCE_FW:-}"; SRC_FW="$FW"
+download "$TARGET_MODEL" "$TARGET_CSC" "$W/tgt" "${TARGET_FW:-}"; TGT_FW="$FW"
 SRC_PDA="${SRC_FW%%/*}"; TGT_PDA="${TGT_FW%%/*}"
 echo "::endgroup::"
 
@@ -82,14 +121,7 @@ extract "$W/a145f/system.img" "$W/a145f/system"
 rm "$W/a145f/system.img"
 echo "::endgroup::"
 
-echo "::group::kernel"
-gh release download "$KERNEL_TAG" -R clangsdorff/langsdorffkernel \
-    -p "langsdorff@${KERNEL_TAG}${KERNEL_VARIANT}_a14.tar" -O "$W/kernel.tar"
-for f in boot vendor_boot vbmeta; do
-    tar -xOf "$W/kernel.tar" "$f.img.lz4" | lz4 -d > "$W/extra/$f.img"
-done
-cp "$CI/prebuilt/update-binary" "$CI/prebuilt/unsparse_super_empty.img" "$W/extra/"
-echo "::endgroup::"
+kernel
 
 echo "::group::patch apps"
 rm -rf apks dist unpacked apktool_frameworks
@@ -140,9 +172,7 @@ while read -r file lib; do
     f="$T/system/system/etc/$file"
     grep -qx "$lib" "$f" || echo "$lib" >> "$f"
 done < port/public_libs.txt
-ONEUI="$(awk -F= '$1 == "ro.build.version.oneui" {v = $2 + 0; a = int(v / 10000); b = int(v / 100) % 100; c = v % 100
-    print a (b || c ? "." b : "") (c ? "." c : "")}' "$T/system/system/build.prop")"
-[ -n "$ONEUI" ] || { echo "ro.build.version.oneui not found"; exit 1; }
+ONEUI="$(oneui "$T/system/system/build.prop")"
 python3 port/props.py "$T/system/system/build.prop" port/system.prop
 ff=system/system/etc/floating_feature.xml
 cp "$T/$ff" "$W/floating_feature.src.xml"
@@ -174,13 +204,4 @@ for p in odm vendor_dlkm system_dlkm; do mv "$W/a145f/$p.img" "$W/img/"; done
 rm -rf "$T" "$W/parts" "$W/a145f"
 echo "::endgroup::"
 
-echo "::group::zip"
-sed -E -e "s/OneUI [0-9.]+ [A-Z0-9]+ Base with langsdorffkernel@[^\"]*/OneUI $ONEUI $SRC_PDA Base with langsdorffkernel@${KERNEL_TAG}${KERNEL_VARIANT}/" \
-    -e "s/Version [0-9.]+/Version $ROM_VERSION/" tools/updater-script > "$W/updater-script"
-grep -q "OneUI $ONEUI $SRC_PDA Base" "$W/updater-script" || { echo "updater-script banner not updated"; exit 1; }
-OUT="$W/a14revive@${ROM_VERSION}_${SRC_PDA}.zip"
-python3 "$CI/zip.py" "$W/img" "$W/extra" "$W/updater-script" "$OUT" \
-    "version=a14revive@$ROM_VERSION" "donor=$SRC_PDA" "target=$TGT_PDA"
-echo "zip=$OUT" >> "$GITHUB_OUTPUT"
-echo "donor=$SRC_PDA" >> "$GITHUB_OUTPUT"
-echo "::endgroup::"
+make_zip "$SRC_PDA" "$TGT_PDA"

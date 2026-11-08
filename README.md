@@ -26,6 +26,9 @@ Open Actions, select `Build`, then run the workflow with these inputs:
 
 | Input | Description |
 |---|---|
+| `mode` | `port` (donor system on target vendor) or `stock` (one firmware, deodexed) |
+| `source_fw` | Donor firmware version (`PDA/CSC/MODEM/BOOTLOADER`), empty for latest |
+| `target_fw` | Target firmware version, empty for latest. Not used in `stock` |
 | `patch_repo` | Patchset repo (`owner/name`) |
 | `patch_ref` | Patchset branch or tag |
 | `source_model` | Donor model |
@@ -39,6 +42,10 @@ Open Actions, select `Build`, then run the workflow with these inputs:
 The gofile link is written to the job summary. The file name is `a14revive@<rom_version>_<donor build>.zip`.
 
 # Patchset layout
+
+`stock` mode needs `apply_patches.sh`, `apktool.jar`, `patches/<name>_out.patch`, `port/debloat.txt`, `port/vendor_debloat.txt`, `port/system.prop`, `port/vendor.prop`, `port/sff.txt`, `port/files/{system,product,vendor}/` and `tools/updater-script`.
+
+`port` mode needs:
 
 ```
 apply_patches.sh
@@ -65,8 +72,7 @@ tools/updater-script
 
 **Known Issues**
 
-- Only the latest firmware can be built, older builds cannot be selected.
-- Patchsets must use the layout above. Older a14revive patchsets need to be updated first.
+- Patchsets must use the layout above.
 
 **Join / Follow**
 
