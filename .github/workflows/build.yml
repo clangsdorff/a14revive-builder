@@ -4,40 +4,40 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: port or stock
+        description: port or stock, eg. port
         required: true
       source_fw:
-        description: donor firmware version, empty for latest
+        description: donor firmware version, empty for latest, eg. A145FXXS4AWJ4/A145FOJM4AWJ4/A145FXXS4AWJ4/A145FXXS4AWJ4
         required: false
       target_fw:
-        description: target firmware version, empty for latest
+        description: target firmware version, empty for latest, eg. A145FXXS4AWJ4/A145FOJM4AWJ4/A145FXXS4AWJ4/A145FXXS4AWJ4
         required: false
       patch_repo:
-        description: patchset repo (owner/name)
+        description: patchset repo (owner/name), eg. clangsdorff/patches_oneui9_a16port
         required: true
       patch_ref:
-        description: patchset branch or tag
+        description: patchset branch or tag, eg. main
         required: true
       source_model:
-        description: donor model
+        description: donor model, eg. SM-A166B
         required: true
       source_csc:
-        description: donor CSC
+        description: donor CSC, eg. EUX
         required: true
       target_model:
-        description: target model
+        description: target model, eg. SM-A145F
         required: true
       target_csc:
-        description: target CSC
+        description: target CSC, eg. TUR
         required: true
       rom_version:
-        description: ROM version
+        description: ROM version, eg. 5.0
         required: true
       kernel_tag:
-        description: langsdorffkernel release tag
+        description: langsdorffkernel release tag, eg. 4.0.1
         required: true
       kernel_variant:
-        description: kernel variant (e, en, p, pn)
+        description: kernel variant (e, en, p, pn), eg. e
         required: true
 
 jobs:
